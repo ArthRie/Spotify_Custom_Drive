@@ -1,0 +1,649 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Custom Drive!</title>
+    <link rel="stylesheet" href="//netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap.min.css">
+    <link rel="stylesheet" href="style.css"> <!--my css-->
+    <meta name="viewport" content="width=device-width, initial-scale=0.75, maximum-scale=1">
+    <style type="text/css">
+      #login, #loggedin {
+        display: none;
+      }
+    </style>
+  </head>
+
+  <body onload="createTable(); checkCookie();">
+    <div class="container">
+      <div id="login" class="login">
+        <h1>Custom Drive!</h1>
+        <a href="/login" class="btn btn-primary">Log in with Spotify</a>
+      </div>
+      <div id="loggedin">
+        <div id="user-profile">
+        </div>
+        <button type="button" class="collapsible" title="Your Playlists">Your Playlists</button>
+        <div id="user-playlist" class="content">
+        </div>
+        <button type="button" class="collapsible" title="Your saved Podcasts">Your Shows</button>
+        <div id="user-podcasts" class="content">
+        </div>
+        <button type="button" class="collapsible" title="Your saved Albums">Your Albums</button>
+        <div id="user-albums" class="content">
+        </div>
+        <button type="button" class="collapsible" title="Playlists created and suggested by Spotify">Featured</button>
+        <div id="user-featured" class="content">
+        </div>
+        <div id="selected_table">
+        </div>
+        <div class="control">
+        <input id=loop type=number min=1 max=100 value=1>
+          <button onclick="increment()">+</button>
+          <button onclick="decrement()">-</button>
+        <p><input type="button" title="creates a Spotify Playlist for your Account" id="bt_to_playlist" value="Create Playlist" onclick="submit()" /></p>
+        <p><input type="button" title="adds Selection to your Spotify Queue" id="bt_to_q" value="Add to your Queue" onclick="submit(1)" /></p>
+      </div>
+      </div>
+    </div>
+
+    <script id="user-profile-template" type="text/x-handlebars-template">
+      <h1>Logged in as {{display_name}}</h1>
+    </script>
+
+    <script id="user-playlists-template" type="text/x-handlebars-template">
+        <div>
+          {{#each items}}
+          <button class="link" id={{id}} value="{{name}}">{{name}}</button>
+          {{/each}}
+      </div>
+    </script>
+    <script id="user-podcasts-template" type="text/x-handlebars-template">
+        <div>
+          {{#each items}}
+          <button class="link" id={{show.uri}} value="{{show.name}}">{{show.name}}</button>
+          {{/each}}
+      </div>
+    </script>
+    <script id="user-albums-template" type="text/x-handlebars-template">
+        <div>
+          {{#each items}}
+          <button class="link" id={{album.uri}} value="{{album.name}}">{{album.name}}</button>
+          {{/each}}
+      </div>
+    </script>
+    <script id="user-featured-template" type="text/x-handlebars-template">
+        <div>
+          {{#each items}}
+          <button class="link" id={{id}} value="{{name}}">{{name}}</button>
+          {{/each}}
+      </div>
+    </script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/handlebars.js/2.0.0-alpha.1/handlebars.min.js"></script>
+    <script src="http://code.jquery.com/jquery-1.10.1.min.js"></script>
+    <script src="https://unpkg.com/sweetalert/dist/sweetalert.min.js"></script>
+    <script>
+    //https://www.w3schools.com/howto/tryit.asp?filename=tryhow_js_collapsible
+    var coll = document.getElementsByClassName("collapsible");
+    var i;
+
+    for (i = 0; i < coll.length; i++) {
+      coll[i].addEventListener("click", function() {
+        this.classList.toggle("active");
+        var content = this.nextElementSibling;
+        if (content.style.maxHeight){
+          content.style.maxHeight = null;
+        } else {
+          content.style.maxHeight = content.scrollHeight + "px";
+        }
+      });
+    }
+    </script>
+    <script>
+    //https://www.w3schools.com/js/js_cookies.asp
+    function setCookie(cname, cvalue, exdays) {
+      var d = new Date();
+      d.setTime(d.getTime() + (exdays * 24 * 60 * 60 * 1000));
+      var expires = "expires="+d.toUTCString();
+      //transform table to array
+      var myTab = document.getElementById(cvalue);
+      var cArr = new Array();
+      for (row = 1; row < myTab.rows.length - 1; row++) {
+        //the table builds rows in between the visible ones or something so i create the object new every iteration to make sure it isnt added twice
+        var myObj = new Object();
+          // loop through each cell in a row.
+        for (c = 0; c < myTab.rows[row].cells.length; c++) {
+            var element = myTab.rows.item(row).cells[c];
+            if (c == 0){ //get playlist id from first cell
+                myObj.id = element.childNodes[0].id;
+                myObj.name = element.childNodes[0].value;
+            } else if (c == 1){
+              myObj.value = element.childNodes[0].value;
+            }
+        }
+        if (!$.isEmptyObject(myObj)){ //this is really ugly but I dont want to mess with the working table right now
+          cArr.push(myObj);
+        }
+      }
+      //https://stackoverflow.com/questions/2980143/i-want-to-store-javascript-array-as-a-cookie/2980163
+      document.cookie = cname + "=" + JSON.stringify(cArr) + ";" + expires + ";path=/";
+    }
+    function getCookie(cname) {
+      var name = cname + "=";
+      var ca = document.cookie.split(';');
+      for(var i = 0; i < ca.length; i++) {
+        var c = ca[i];
+        while (c.charAt(0) == ' ') {
+          c = c.substring(1);
+        }
+        if (c.indexOf(name) == 0) {
+          return c.substring(name.length, c.length);
+        }
+      }
+      return "";
+    }
+    </script>
+    <script>
+    var arrHead = ['Name', 'Mode', ''] //array header
+    //https://www.encodedna.com/javascript/dynamically-add-remove-rows-to-html-table-using-javascript-and-save-data.htm
+    //creates the table with selected playlists
+    function createTable() {
+      var empTable = document.createElement('table');
+      empTable.setAttribute('id', 'empTable');  // table id.
+
+      var tr = empTable.insertRow(-1);
+
+      for (var h = 0; h < arrHead.length; h++) {
+          var th = document.createElement('th'); // the header object.
+          th.innerHTML = arrHead[h];
+          tr.appendChild(th);
+      }
+
+      var div = document.getElementById('selected_table');
+      div.appendChild(empTable);    // add table to a container.
+    }
+    // function to add new row.
+    function addRow(name, id, mode=null) {
+        var empTab = document.getElementById('empTable');
+
+        var rowCnt = empTab.rows.length;    // get the number of rows.
+        var tr = empTab.insertRow(rowCnt); // table row.
+        tr = empTab.insertRow(rowCnt);
+
+        for (var c = 0; c < arrHead.length; c++) {
+            var td = document.createElement('td');          // TABLE DEFINITION.
+            td = tr.insertCell(c);
+
+            if (c == 2) {   // if its the third column of the table.
+                // add a button control.
+                var button = document.createElement('input');
+
+                // set the attributes.
+                button.setAttribute('type', 'button');
+                button.setAttribute('value', 'Remove');
+
+                // add button's "onclick" event.
+                button.setAttribute('onclick', 'removeRow(this)');
+
+                td.appendChild(button);
+            } else if (c == 0){
+                // the first column will have the name of the playlist
+                var ele = document.createElement('input');
+                ele.setAttribute('type', 'text');
+                ele.setAttribute('value', name);
+                ele.setAttribute('id', id);
+                ele.setAttribute('readonly', 'readonly');
+
+                td.appendChild(ele);
+            } else if (c == 1){
+                //create dropdown to select the mode
+                //https://stackoverflow.com/questions/33668627/how-to-add-selected-on-a-option-using-setattribute-with-javascript
+                var ele = document.createElement('select');
+                //safe cookie if someone changes mode
+                ele.setAttribute('onclick', 'setCookie("selection", "empTable", 30)');
+                var opt1 = document.createElement('option');
+                opt1.setAttribute('value', 'random');
+                var opt2 = document.createElement('option');
+                opt2.setAttribute('value', 'first');
+                var opt3 = document.createElement('option');
+                opt3.setAttribute('value', 'last');
+                //make opt1 the default Mode
+                if (mode == null || mode == 'random'){
+                  opt1.setAttribute('selected', 'selected');
+                } else if (mode == 'first'){ // input could come from cookie
+                  opt2.setAttribute('selected', 'selected');
+                } else if (mode == 'last'){
+                  opt3.setAttribute('selected', 'selected');
+                } else {
+                  console.log("an unexpected mode has been provided: "+ mode);
+                }
+                ele.setAttribute('titel', 'Selection Mode')
+
+                opt1.appendChild( document.createTextNode( 'random'));
+                opt2.appendChild( document.createTextNode( 'first'));
+                opt3.appendChild( document.createTextNode( 'last'));
+
+                ele.appendChild(opt1);
+                ele.appendChild(opt2);
+                ele.appendChild(opt3);
+                td.appendChild(ele);
+            } else{
+                // the 2nd, 3rd and 4th column, will have textbox.
+                var ele = document.createElement('input');
+                ele.setAttribute('type', 'text');
+                ele.setAttribute('value', '');
+
+                td.appendChild(ele);
+            }
+        }
+        //safe updated table to js_cookie
+        setCookie("selection", "empTable", 30);
+    }
+    // function to delete a row.
+      function removeRow(oButton) {
+          var empTab = document.getElementById('empTable');
+          empTab.deleteRow(oButton.parentNode.parentNode.rowIndex); // buttton -> td -> tr
+          setCookie("selection", "empTable", 30);
+      }
+
+      function checkCookie() {
+        var testCookie = getCookie("selection");
+        if (testCookie != "") {
+          arr_from_cookie = JSON.parse(testCookie);
+          for (i = 0; i < arr_from_cookie.length; i++){ // add all elements safed in the cookie back to the the selected table
+            addRow(arr_from_cookie[i].name, arr_from_cookie[i].id, arr_from_cookie[i].value);
+          }
+        }
+        var testCookie = getCookie("loop"); // set loop counter from cookie
+        if (testCookie != ""){
+          document.getElementById("loop").value = testCookie;
+        }
+      }
+
+      //submits the selection either to playlist or Q
+      function submit(to_q = 0){
+            var myTab = document.getElementById('empTable');
+            var arrValues = new Array();
+            //not used yet
+            var playlist_mode = null;
+            //the container for the track ids we will push to the playlist and pass to callback
+            var playlist_track_ids = new Array();
+            // loop through each row of the table.
+            for (row = 1; row < myTab.rows.length - 1; row++) {
+                // loop through each cell in a row.
+                var arrObj = new Object(); // the table has rows inbetween so I reset the Object here
+                for (c = 0; c < myTab.rows[row].cells.length; c++) {
+                    var element = myTab.rows.item(row).cells[c];
+                    if (c == 0){ //get playlist id from first cell
+                        arrObj.id = element.childNodes[0].id;
+                    } else if (c == 1){
+                        arrObj.value = element.childNodes[0].value;
+                    }
+                }
+                if (arrObj.id != null){ //also because the table has empty rows inbetween
+                  arrValues.push(arrObj);
+                }
+            }
+            //safe all ajax requests so we can wait for them later
+            var requests = [];
+            //add as often as loop counter indicates, but atleast once
+            for (k = 1; k <= document.getElementById('loop').value; k++){
+              //iterate over array to turn playlist ids into random tracks from each playlist
+              for (j = 0; j < arrValues.length; j++){
+                //if its a  show i have pushed the uri to id and we need to make a different get request
+                if (arrValues[j].id.substring(0, 13) == "spotify:show:"){
+                  requests.push($.ajax({
+                      url: 'https://api.spotify.com/v1/shows/'+ arrValues[j].id.substring(13) + '/episodes',
+                      headers: {
+                        'Authorization': 'Bearer ' + access_token
+                      },
+                      /*dataType: "jsonp",*/
+                      data: {
+                        fields:"items(uri)"
+                      },
+                      async: false,
+                      success: function(response) {
+                        //get a random track from the playlist
+                        tryCnt = 0;
+                        if (arrValues[j].value == "random"){
+                          index = Math.floor(Math.random() * response.items.length)
+                          //if song is aleady included try next song as many times as playlist is long
+                          while (playlist_track_ids.includes(response.items[index].uri) && tryCnt < (response.items.length -1)){
+                            index += 1;
+                            if (index == response.items.length -1){ //if index reaches end of playlist loop around to beginning
+                              index = 0;
+                            }
+                            tryCnt += 1;
+                          }
+                        } else if (arrValues[j].value == "first"){
+                          index = 0;
+                          while (playlist_track_ids.includes(response.items[index].uri) && tryCnt < (response.items.length -1)){
+                            index += 1;
+                            tryCnt += 1;
+                          }
+                        } else if (arrValues[j].value == "last"){
+                          index = response.items.length -1;
+                          while (playlist_track_ids.includes(response.items[index].uri) && tryCnt < (response.items.length -1)){
+                            index -= 1;
+                            tryCnt += 1;
+                          }
+                        }
+                        if (tryCnt == response.items.length){
+                          console.log("It seems every song of this list is already included. For playlists this call will be ignored. For Queues a track will be added twice");
+                        }
+                        playlist_track_ids.push(response.items[index].uri);
+                      },
+                      error: function(e) {
+                        console.log(e);
+                      }
+                  })
+                );
+              } else if (arrValues[j].id.substring(0, 14) == "spotify:album:"){
+                requests.push($.ajax({
+                    url: 'https://api.spotify.com/v1/albums/'+ arrValues[j].id.substring(14) + '/tracks',
+                    headers: {
+                      'Authorization': 'Bearer ' + access_token
+                    },
+                    /*dataType: "jsonp",*/
+                    data: {
+                      fields:"items(uri)"
+                    },
+                    async: false,
+                    success: function(response) {
+                      //get a random track from the playlist
+                      tryCnt = 0;
+                      if (arrValues[j].value == "random"){
+                        index = Math.floor(Math.random() * response.items.length)
+                        //if song is aleady included try next song as many times as playlist is long
+                        while (playlist_track_ids.includes(response.items[index].uri) && tryCnt < (response.items.length -1)){
+                          index += 1;
+                          if (index == response.items.length -1){ //if index reaches end of playlist loop around to beginning
+                            index = 0;
+                          }
+                          tryCnt += 1;
+                        }
+                      } else if (arrValues[j].value == "first"){
+                        index = 0;
+                        while (playlist_track_ids.includes(response.items[index].uri) && tryCnt < (response.items.length -1)){
+                          index += 1;
+                          tryCnt += 1;
+                        }
+                      } else if (arrValues[j].value == "last"){
+                        index = response.items.length -1;
+                        while (playlist_track_ids.includes(response.items[index].uri) && tryCnt < (response.items.length -1)){
+                          index -= 1;
+                          tryCnt += 1;
+                        }
+                      }
+                      if (tryCnt == response.items.length){
+                        console.log("It seems every song of this list is already included. For playlists this call will be ignored. For Queues a track will be added twice");
+                      }
+                      playlist_track_ids.push(response.items[index].uri);
+                    },
+                    error: function(e) {
+                      console.log(e);
+                    }
+                })
+              );
+              }else {
+                //get the tracklist as ids of the playlist by id of the playlist
+                  requests.push($.ajax({
+                      url: 'https://api.spotify.com/v1/playlists/'+ arrValues[j].id +'/tracks',
+                      headers: {
+                        'Authorization': 'Bearer ' + access_token
+                      },
+                      /*dataType: "jsonp", */
+                      data: {
+                        fields:"items(track(uri))"
+                      },
+                      async: false,
+                      success: function(response) {
+                        //get a random track from the playlist
+                        tryCnt = 0;
+                        if (arrValues[j].value == "random"){
+                          index = Math.floor(Math.random() * response.items.length)
+                          //if song is aleady included try next song as many times as playlist is long
+                          while (playlist_track_ids.includes(response.items[index].track.uri) && tryCnt < (response.items.length -1)){
+                            index += 1;
+                            if (index == response.items.length -1){ //if index reaches end of playlist loop around to beginning
+                              index = 0;
+                            }
+                            tryCnt += 1;
+                          }
+                        } else if (arrValues[j].value == "first"){
+                          index = 0;
+                          while (playlist_track_ids.includes(response.items[index].track.uri) && tryCnt < (response.items.length -1)){
+                            index += 1;
+                            tryCnt += 1;
+                          }
+                        } else if (arrValues[j].value == "last"){
+                          index = response.items.length -1;
+                          while (playlist_track_ids.includes(response.items[index].track.uri) && tryCnt < (response.items.length -1)){
+                            index -= 1;
+                            tryCnt += 1;
+                          }
+                        }
+                        if (tryCnt == response.items.length){
+                          console.log("It seems every song of this list is already included. For playlists this call will be ignored. For Queues a track will be added twice");
+                        }
+                        playlist_track_ids.push(response.items[index].track.uri);
+                      },
+                      error: function(e) {
+                        console.log(e);
+                      }
+                  })
+                );
+                }
+              }
+            }
+            //https://stackoverflow.com/questions/30245126/jquery-for-loop-on-ajax-call-and-wait-until-all-is-done
+          $.when.apply(this, requests).then(function(){     //wait for ajax to finish before submitting
+          if (to_q == 0){ //to playlist
+            var url = 'https://api.spotify.com/v1/users/' + myName + '/playlists';
+            var rightNow = new Date();
+            var res = rightNow.toISOString().slice(0,10).replace(/-/g,""); //for name of playlist
+            $.ajax({
+                url: url,
+                headers: {
+                  'Authorization': 'Bearer ' + access_token
+                },
+                dataType: "json",
+                contentType: "application/json",
+                method: "POST",
+                data: JSON.stringify({
+                  "name": 'CustomDrive' + res,
+                  "description": "Playlist created by the Custom Drive Web App",
+                  "public": true
+                }),
+                success: function(response) {
+                  //add items to the created playlist using the id stored in the response
+                  $.ajax({
+                      url: 'https://api.spotify.com/v1/playlists/' + response.id + '/tracks',
+                      headers: {
+                        'Authorization': 'Bearer ' + access_token
+                      },
+                      dataType: "json",
+                      contentType: "application/json",
+                      method: "POST",
+                      data: JSON.stringify({
+                        "uris": playlist_track_ids
+                      }),
+                      success: function(response) {
+                        //https://sweetalert.js.org/guides/#getting-started
+                        //https://sweetalert2.github.io/recipe-gallery/timer-methods.html
+                          swal("Success!", "Playlist has been created", "success", {timer:1500, buttons: false,});
+                      },
+                      error: function(e) {
+                        throw new Error(swal(e.responseJSON.error.message, "! Something went wrong :(",  "error", {timer:2000,}));
+                      }
+                    });
+                },
+                error: function(e) {
+                  console.log(e);
+                }
+            });
+          } else if (to_q == 1){ // add to Queue instead
+            //array for the requests
+            queueRequests = new Array();
+            //this post can only add one track at once so loop over Array
+            //das da ein fragezeichen rein muss junge junge junge das hat wieder gedauert
+            $.each(playlist_track_ids, function( index, value ) {
+                queueRequests.push($.ajax({
+                    url: 'https://api.spotify.com/v1/me/player/queue?' + $.param({ uri: value }),
+                    headers: {
+                      'Authorization': 'Bearer ' + access_token
+                    },
+                    method: "POST",
+                    async: false,
+                    success: function(response) {
+                    },
+                    error: function(e) {
+                      if (e.responseJSON.error.message == "Player command failed: No active device found"){
+                        throw new Error(swal(e.responseJSON.error.message, "! Spotify can't find an active device. Try playing a random song on your device first", "error", {timer:2000,}));
+                      } else { //If the user making the request is non-premium, a 403 FORBIDDEN response code will be returned.
+                        throw new Error(swal(e.responseJSON.error.message, "! Unfortunatly you can only use queues with Spotify Premium", "error", {timer:2000,}));
+                      }
+                    }
+                }));
+              });
+              $.when.apply(this, requests).then(function(){
+                swal("Success!", "Tracks have been added to the Queue", "success", {timer:1500, buttons: false,});
+              });
+          }
+        });
+        }
+    </script>
+    <script>
+    //https://www.tutorialspoint.com/create-increment-decrement-plus-minus-buttons-programmatically-for-html-input-type-number-in-javascript
+    function increment() {
+      document.getElementById('loop').stepUp();
+      var d = new Date(); //30 days
+      d.setTime(d.getTime() + (30 * 24 * 60 * 60 * 1000));
+      var expires = "expires="+d.toUTCString();
+      document.cookie = "loop" + "=" + document.getElementById('loop').value + ";" + expires + ";path=/";
+    }
+    function decrement() {
+      document.getElementById('loop').stepDown();
+      var d = new Date(); //30 days
+      d.setTime(d.getTime() + (30 * 24 * 60 * 60 * 1000));
+      var expires = "expires="+d.toUTCString();
+      document.cookie = "loop" + "=" + document.getElementById('loop').value + ";" + expires + ";path=/";
+    }
+    </script>
+    <script>
+      (function() {
+        /**
+         * Obtains parameters from the hash of the URL
+         * @return Object
+         */
+        function getHashParams() {
+          var hashParams = {};
+          var e, r = /([^&;=]+)=?([^&;]*)/g,
+              q = window.location.hash.substring(1);
+          while ( e = r.exec(q)) {
+             hashParams[e[1]] = decodeURIComponent(e[2]);
+          }
+          return hashParams;
+        }
+        //user information
+        var userProfileSource = document.getElementById('user-profile-template').innerHTML,
+            userProfileTemplate = Handlebars.compile(userProfileSource),
+            userProfilePlaceholder = document.getElementById('user-profile');
+
+        //playlist information
+        var userPlaylistSource = document.getElementById('user-playlists-template').innerHTML,
+            userPlaylistTemplate = Handlebars.compile(userPlaylistSource),
+            userPlaylistPlaceholder = document.getElementById('user-playlist');
+
+        //podcast information
+        var userPodcastsSource = document.getElementById('user-podcasts-template').innerHTML,
+            userPodcastsTemplate = Handlebars.compile(userPodcastsSource),
+            userPodcastsPlaceholder = document.getElementById('user-podcasts');
+
+        //album information
+        var userAlbumsSource = document.getElementById('user-albums-template').innerHTML,
+            userAlbumsTemplate = Handlebars.compile(userAlbumsSource),
+            userAlbumsPlaceholder = document.getElementById('user-albums');
+
+        //faetured playlist information
+        var userFeaturedSource = document.getElementById('user-featured-template').innerHTML,
+            userFeaturedTemplate = Handlebars.compile(userFeaturedSource),
+            userFeaturedPlaceholder = document.getElementById('user-featured');
+
+        var params = getHashParams();
+
+        access_token = params.access_token
+        var refresh_token = params.refresh_token,
+            error = params.error;
+
+        if (error) {
+          alert('There was an error during the authentication');
+        } else {
+          if (access_token) {
+            $.ajax({
+                url: 'https://api.spotify.com/v1/me',
+                headers: {
+                  'Authorization': 'Bearer ' + access_token
+                },
+                success: function(response) {
+                  userProfilePlaceholder.innerHTML = userProfileTemplate(response);
+                  myName = response.id;
+                  $('#login').hide();
+                  $('#loggedin').show();
+                }
+            });
+            //get the playlists
+            $.ajax({
+              url: 'https://api.spotify.com/v1/me/playlists',
+              headers: {
+                'Authorization': 'Bearer ' + access_token
+              },
+              success: function(response) {
+                userPlaylistPlaceholder.innerHTML = userPlaylistTemplate(response);
+              }
+            });
+            //get the podcast
+            $.ajax({
+              url: 'https://api.spotify.com/v1/me/shows',
+              headers: {
+                'Authorization': 'Bearer ' + access_token
+              },
+              success: function(response) {
+                userPodcastsPlaceholder.innerHTML = userPodcastsTemplate(response);
+              }
+            });
+            //get the albums
+            $.ajax({
+              url: 'https://api.spotify.com/v1/me/albums',
+              headers: {
+                'Authorization': 'Bearer ' + access_token
+              },
+              success: function(response) {
+                userAlbumsPlaceholder.innerHTML = userAlbumsTemplate(response);
+              }
+            });
+            //get the featured Playlists
+            $.ajax({
+              url: 'https://api.spotify.com/v1/browse/featured-playlists',
+              headers: {
+                'Authorization': 'Bearer ' + access_token
+              },
+              success: function(response) {
+                userFeaturedPlaceholder.innerHTML = userFeaturedTemplate(response.playlists);
+              }
+            });
+          } else {
+              // render initial screen
+              $('#login').show();
+              $('#loggedin').hide();
+          }
+        }
+        $(document).ready(function() {
+          //https://makeitspendit.com/fix-jquery-click-event-not-working-with-dynamically-added-elements/
+            $(document).on('click', '.link', function(){
+              addRow(this.value, this.id, null);
+            });
+          });
+      })();
+    </script>
+
+  </body>
+</html>
